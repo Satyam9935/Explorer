@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* This part below makes the background dark blue/black for the space theme */
+body {
+  background-color: #0f172a; 
+  color: white;
+}
