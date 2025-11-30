@@ -1,10 +1,69 @@
-import { useState, useEffect } from 'react';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { useRef } from 'react'; // We need this to auto-scroll to bottom of chat
+import {
+   useState, useEffect } from 'react';
 
 function App() {
   const [photoData, setPhotoData] = useState(null);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(false);
+  // ... existing state ...
+const [isChatOpen, setIsChatOpen] = useState(false);
+const [chatHistory, setChatHistory] = useState([]); // Stores { role: 'user' | 'ai', text: '...' }
+const [inputMsg, setInputMsg] = useState("");
+const [isAiTyping, setIsAiTyping] = useState(false);
+const chatEndRef = useRef(null);
+
+// Auto-scroll to bottom when new message arrives
+useEffect(() => {
+  chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [chatHistory, isChatOpen]);
+
+// Clear chat when looking at a new photo (so context stays fresh)
+useEffect(() => {
+  setChatHistory([{ role: 'ai', text: "Hi! I'm your cosmic guide. Ask me anything about this image!" }]);
+}, [photoData]);
+const handleSendMessage = async () => {
+  if (!inputMsg.trim()) return;
+
+  // 1. Add User Message to UI immediately
+  const userText = inputMsg;
+  setChatHistory(prev => [...prev, { role: 'user', text: userText }]);
+  setInputMsg("");
+  setIsAiTyping(true);
+
+  try {
+    // 2. Setup Gemini
+    const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+    // 3. THE SECRET SAUCE: Context Injection
+    // We force the AI to read the NASA explanation before answering.
+    const prompt = `
+      You are an expert astronomer guiding a student.
+      
+      CONTEXT: The user is looking at a NASA picture titled "${photoData.title}".
+      EXPLANATION OF PICTURE: "${photoData.explanation}"
+      
+      USER QUESTION: "${userText}"
+      
+      Answer the user's question based on the context above. Keep it conversational, short (under 50 words), and engaging.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const aiText = response.text();
+
+    // 4. Add AI Response to UI
+    setChatHistory(prev => [...prev, { role: 'ai', text: aiText }]);
+  } catch (error) {
+    console.error("Chat Error:", error);
+    setChatHistory(prev => [...prev, { role: 'ai', text: "I lost signal with the telescope... try again?" }]);
+  } finally {
+    setIsAiTyping(false);
+  }
+};
 
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem('nasaFavorites')) || [];
@@ -14,9 +73,9 @@ function App() {
   const fetchPhoto = async (dateToFetch) => {
     setLoading(true);
     try {
-      // REPLACE 'DEMO_KEY' WITH YOUR ACTUAL KEY IF NEEDED
+      
       const res = await fetch(
-        `https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&date=${dateToFetch}`
+        `https://api.nasa.gov/planetary/apod?api_key=5fFZ67r11N0CIdqn3NViO5NIhtadsrUWqmBXnjdd=${dateToFetch}`
       );
       const data = await res.json();
       setPhotoData(data);
@@ -171,6 +230,81 @@ function App() {
         </div>
 
       </div>
+      {/* --- CHATBOT UI SECTION --- */}
+
+{/* 1. The Floating Button (Always Visible) */}
+<button 
+  onClick={() => setIsChatOpen(!isChatOpen)}
+  className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform z-50 border border-white/20"
+>
+  {isChatOpen ? (
+    <span className="text-2xl">✕</span> // Close Icon
+  ) : (
+    <span className="text-2xl">💬</span> // Chat Icon
+  )}
+</button>
+
+{/* 2. The Chat Window (Glassmorphism Style) */}
+{isChatOpen && (
+  <div className="fixed bottom-24 right-6 w-80 md:w-96 h-[500px] bg-black/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50 animate-fade-in-up">
+    
+    {/* Header */}
+    <div className="p-4 bg-white/5 border-b border-white/10 flex items-center gap-2">
+      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+      <h3 className="font-bold text-white">Cosmic Guide</h3>
+    </div>
+
+    {/* Messages Area */}
+    <div className="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
+      {chatHistory.map((msg, index) => (
+        <div 
+          key={index} 
+          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        >
+          <div className={`max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed ${
+            msg.role === 'user' 
+              ? 'bg-purple-600 text-white rounded-br-none' 
+              : 'bg-white/10 text-gray-200 border border-white/10 rounded-bl-none'
+          }`}>
+            {msg.text}
+          </div>
+        </div>
+      ))}
+      
+      {/* Typing Indicator */}
+      {isAiTyping && (
+        <div className="flex justify-start">
+          <div className="bg-white/10 p-3 rounded-2xl rounded-bl-none flex gap-1 items-center">
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+          </div>
+        </div>
+      )}
+      <div ref={chatEndRef} />
+    </div>
+
+    {/* Input Area */}
+    <div className="p-3 border-t border-white/10 bg-white/5">
+      <div className="flex gap-2">
+        <input 
+          type="text" 
+          value={inputMsg}
+          onChange={(e) => setInputMsg(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+          placeholder="Ask about this image..."
+          className="flex-1 bg-black/50 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 border border-white/10"
+        />
+        <button 
+          onClick={handleSendMessage}
+          className="bg-purple-600 p-2 rounded-lg hover:bg-purple-500 transition-colors"
+        >
+          ➤
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
