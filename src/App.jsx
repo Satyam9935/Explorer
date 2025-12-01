@@ -75,7 +75,7 @@ const handleSendMessage = async () => {
     try {
       
       const res = await fetch(
-        `https://api.nasa.gov/planetary/apod?api_key=5fFZ67r11N0CIdqn3NViO5NIhtadsrUWqmBXnjdd=${dateToFetch}`
+        `https://api.nasa.gov/planetary/apod?api_key=wUhxOB9FLw1im4feCcBAfTsE4wE73o8NygNqY2MJ&date=${dateToFetch}`
       );
       const data = await res.json();
       setPhotoData(data);
